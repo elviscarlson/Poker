@@ -61,6 +61,37 @@
         .error {
             color: red;
             font-weight: bold;
+            padding: 10px;
+            background-color: #ffe6e6;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            border-left: 5px solid red;
+        }
+        
+        .correction-box {
+            background-color: #e9f7ef;
+            padding: 10px;
+            border-left: 5px solid #27ae60;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        
+        .info-box {
+            background-color: #e3f2fd;
+            padding: 10px;
+            border-left: 5px solid #2196f3;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        
+        .profit {
+            color: #27ae60;
+            font-weight: bold;
+        }
+        
+        .loss {
+            color: #e74c3c;
+            font-weight: bold;
         }
     </style>
 </head>
@@ -135,35 +166,83 @@
             
             // Kontrollera om summorna stämmer
             let discrepancy = totalRemaining - totalBuyin;
+            let proceedWithCalculation = true;
             
             if (Math.abs(discrepancy) > 0.01) {
-                // Beräkna korrigeringen per spelare
-                const correctionPerPlayer = discrepancy / playerCount;
-                const originalPlayers = JSON.parse(JSON.stringify(players)); // Behåll originalet för visning
-                
-                // Justera varje spelares kvarvarande belopp för att matcha totalen
-                players.forEach(player => {
-                    player.remaining -= correctionPerPlayer;
-                    player.balance = player.remaining - player.buyin;
-                });
-                
-                // Uppdatera totalRemaining
-                totalRemaining = totalBuyin;
+                document.getElementById('resultDisplay').style.display = 'block';
                 
                 // Visa varningsmeddelande
-                document.getElementById('resultDisplay').style.display = 'block';
-                document.getElementById('summaryDisplay').innerHTML = `
-                    <div class="error">VARNING: Summan av insatser (${totalBuyin.toFixed(2)} kr) matchade inte summan som var kvar (${(totalBuyin + discrepancy).toFixed(2)} kr)!</div>
-                    <p>Differensen på ${Math.abs(discrepancy).toFixed(2)} kr har fördelats jämnt mellan alla spelare (${Math.abs(correctionPerPlayer).toFixed(2)} kr per spelare).</p>
-                    <p>Beräkningarna nedan har justerats för att matcha den totala insatsen.</p>
-                    <div style="background-color: #fff3cd; padding: 10px; border-left: 5px solid #ffc107; margin: 10px 0;">
-                        <strong>Justerade värden används i beräkningen!</strong> Kontrollera noga att detta är vad ni vill.
-                    </div>
+                let warningMessage = `
+                    <div class="error">VARNING: Summan av insatser (${totalBuyin.toFixed(2)} kr) matchar inte summan som är kvar (${totalRemaining.toFixed(2)} kr)!</div>
+                    <p>Det finns en differens på ${Math.abs(discrepancy).toFixed(2)} kr.</p>
                 `;
-            } else {
-                // Ingen skillnad i summorna
-                discrepancy = 0;
+                
+                // Fråga användaren om de vill fortsätta med automatisk korrigering
+                warningMessage += `
+                    <div class="warning-box">
+                        <p>Vill du:</p>
+                        <button onclick="applyCorrection()">Fördela differensen jämnt och fortsätt</button>
+                        <button onclick="cancelCalculation()">Avbryt och fixa värden</button>
+                    </div>
+                    <div id="correctionMessage" style="display: none;"></div>
+                `;
+                
+                document.getElementById('summaryDisplay').innerHTML = warningMessage;
+                document.getElementById('swishTransactions').innerHTML = '';
+                
+                // Spara data för senare användning
+                window.pokerData = {
+                    players: JSON.parse(JSON.stringify(players)),
+                    totalBuyin,
+                    totalRemaining,
+                    discrepancy,
+                    playerCount
+                };
+                
+                return; // Avbryt beräkningen tills användaren har valt
             }
+            
+            // Om allt stämmer (eller efter korrigering), fortsätt med beräkningen
+            performCalculation(players, totalBuyin, totalRemaining, 0);
+        }
+        
+        // Funktion för att applicera korrigeringen och fortsätta
+        function applyCorrection() {
+            const data = window.pokerData;
+            const correctionPerPlayer = data.discrepancy / data.playerCount;
+            
+            // Justera spelarnas värden
+            data.players.forEach(player => {
+                player.remaining -= correctionPerPlayer;
+                player.balance = player.remaining - player.buyin;
+            });
+            
+            // Visa korrigeringsmeddelandet
+            document.getElementById('correctionMessage').style.display = 'block';
+            document.getElementById('correctionMessage').innerHTML = `
+                <div class="correction-box">
+                    <p>Differensen på ${Math.abs(data.discrepancy).toFixed(2)} kr har fördelats jämnt mellan alla spelare 
+                    (${Math.abs(correctionPerPlayer).toFixed(2)} kr per spelare).</p>
+                    <p>Beräkningarna nedan baseras på de justerade värdena.</p>
+                </div>
+            `;
+            
+            // Fortsätt med beräkningen med justerade värden
+            performCalculation(data.players, data.totalBuyin, data.totalBuyin, data.discrepancy);
+        }
+        
+        // Funktion för att avbryta beräkningen
+        function cancelCalculation() {
+            document.getElementById('correctionMessage').style.display = 'block';
+            document.getElementById('correctionMessage').innerHTML = `
+                <div class="info-box">
+                    <p>Beräkningen avbruten. Kontrollera värdena och försök igen.</p>
+                </div>
+            `;
+        }
+        
+        // Utför själva beräkningen av transaktioner
+        function performCalculation(players, totalBuyin, totalRemaining, discrepancy) {
             
             // Beräkna Swish-transaktioner
             const transactions = calculateTransactions(players);
@@ -173,25 +252,54 @@
             
             // Visa översikt
             let summaryHtml = '<table>';
-            summaryHtml += '<tr><th>Spelare</th><th>Insats</th><th>Slutresultat</th><th>Vinst/Förlust</th></tr>';
+            summaryHtml += '<tr><th>Spelare</th><th>Insats</th><th>Slutresultat</th>';
             
-            players.forEach(player => {
-                const profitClass = player.balance > 0 ? 'profit' : player.balance < 0 ? 'loss' : '';
+            // Om det fanns en diskrepans, visa både original och justerade värden
+            if (Math.abs(discrepancy) > 0.01) {
+                summaryHtml += '<th>Justerat slutresultat</th><th>Justerad vinst/förlust</th></tr>';
+                
+                players.forEach((player, i) => {
+                    const originalRemaining = player.remaining + discrepancy / playerCount;
+                    const originalBalance = originalRemaining - player.buyin;
+                    const profitClass = player.balance > 0 ? 'profit' : player.balance < 0 ? 'loss' : '';
+                    
+                    summaryHtml += `<tr>
+                        <td>${player.name}</td>
+                        <td>${player.buyin.toFixed(2)} kr</td>
+                        <td>${originalRemaining.toFixed(2)} kr</td>
+                        <td>${player.remaining.toFixed(2)} kr</td>
+                        <td class="${profitClass}">${player.balance > 0 ? '+' : ''}${player.balance.toFixed(2)} kr</td>
+                    </tr>`;
+                });
                 
                 summaryHtml += `<tr>
-                    <td>${player.name}</td>
-                    <td>${player.buyin} kr</td>
-                    <td>${player.remaining} kr</td>
-                    <td class="${profitClass}">${player.balance > 0 ? '+' : ''}${player.balance} kr</td>
+                    <td><strong>Totalt</strong></td>
+                    <td><strong>${totalBuyin.toFixed(2)} kr</strong></td>
+                    <td><strong>${(totalBuyin + discrepancy).toFixed(2)} kr</strong></td>
+                    <td><strong>${totalBuyin.toFixed(2)} kr</strong></td>
+                    <td><strong>0.00 kr</strong></td>
                 </tr>`;
-            });
-            
-            summaryHtml += `<tr>
-                <td><strong>Totalt</strong></td>
-                <td><strong>${totalBuyin} kr</strong></td>
-                <td><strong>${totalRemaining} kr</strong></td>
-                <td><strong>${totalRemaining - totalBuyin} kr</strong></td>
-            </tr>`;
+            } else {
+                summaryHtml += '<th>Vinst/Förlust</th></tr>';
+                
+                players.forEach(player => {
+                    const profitClass = player.balance > 0 ? 'profit' : player.balance < 0 ? 'loss' : '';
+                    
+                    summaryHtml += `<tr>
+                        <td>${player.name}</td>
+                        <td>${player.buyin.toFixed(2)} kr</td>
+                        <td>${player.remaining.toFixed(2)} kr</td>
+                        <td class="${profitClass}">${player.balance > 0 ? '+' : ''}${player.balance.toFixed(2)} kr</td>
+                    </tr>`;
+                });
+                
+                summaryHtml += `<tr>
+                    <td><strong>Totalt</strong></td>
+                    <td><strong>${totalBuyin.toFixed(2)} kr</strong></td>
+                    <td><strong>${totalRemaining.toFixed(2)} kr</strong></td>
+                    <td><strong>${(totalRemaining - totalBuyin).toFixed(2)} kr</strong></td>
+                </tr>`;
+            }
             
             summaryHtml += '</table>';
             document.getElementById('summaryDisplay').innerHTML = summaryHtml;
