@@ -133,16 +133,36 @@
                 totalRemaining += remaining;
             }
             
-            // Kontrollera att summorna stämmer
-            if (Math.abs(totalRemaining - totalBuyin) > 0.01) {
+            // Kontrollera om summorna stämmer
+            let discrepancy = totalRemaining - totalBuyin;
+            
+            if (Math.abs(discrepancy) > 0.01) {
+                // Beräkna korrigeringen per spelare
+                const correctionPerPlayer = discrepancy / playerCount;
+                const originalPlayers = JSON.parse(JSON.stringify(players)); // Behåll originalet för visning
+                
+                // Justera varje spelares kvarvarande belopp för att matcha totalen
+                players.forEach(player => {
+                    player.remaining -= correctionPerPlayer;
+                    player.balance = player.remaining - player.buyin;
+                });
+                
+                // Uppdatera totalRemaining
+                totalRemaining = totalBuyin;
+                
+                // Visa varningsmeddelande
                 document.getElementById('resultDisplay').style.display = 'block';
                 document.getElementById('summaryDisplay').innerHTML = `
-                    <div class="error">VARNING: Summan av insatser (${totalBuyin} kr) matchar inte summan som är kvar (${totalRemaining} kr)!</div>
-                    <p>Det verkar vara ${Math.abs(totalRemaining - totalBuyin)} kr som inte stämmer i beräkningen.</p>
-                    <p>Kontrollera att alla värden är korrekt inmatade.</p>
+                    <div class="error">VARNING: Summan av insatser (${totalBuyin.toFixed(2)} kr) matchade inte summan som var kvar (${(totalBuyin + discrepancy).toFixed(2)} kr)!</div>
+                    <p>Differensen på ${Math.abs(discrepancy).toFixed(2)} kr har fördelats jämnt mellan alla spelare (${Math.abs(correctionPerPlayer).toFixed(2)} kr per spelare).</p>
+                    <p>Beräkningarna nedan har justerats för att matcha den totala insatsen.</p>
+                    <div style="background-color: #fff3cd; padding: 10px; border-left: 5px solid #ffc107; margin: 10px 0;">
+                        <strong>Justerade värden används i beräkningen!</strong> Kontrollera noga att detta är vad ni vill.
+                    </div>
                 `;
-                document.getElementById('swishTransactions').innerHTML = '';
-                return;
+            } else {
+                // Ingen skillnad i summorna
+                discrepancy = 0;
             }
             
             // Beräkna Swish-transaktioner
